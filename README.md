@@ -1,6 +1,6 @@
 # BoatMouse Speed Controller
 
-A simple Java tool to quickly change Windows mouse speed, designed for Minecraft speedrunners who use ninjabrain for measurements.
+A simple Java tool to quickly change Windows mouse speed, designed for Minecraft speedrunners who use ninjabrain for measurements. (I hate Windows settings. I find it easier to create a folder and open everything in it.)
 
 ## Features
 
