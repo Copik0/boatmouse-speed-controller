@@ -10,6 +10,7 @@ A simple Java tool to quickly change Windows mouse speed, designed for Minecraft
 - 🖤 **Dark theme:** Easy on the eyes
 - 💾 **Persistent settings:** Remembers your preferences
 - 🚀 **Startup speed:** Option to set specific speed on launch
+- ⚡ **Toggle Mouse Acceleration:** New button to quickly enable/disable Windows mouse acceleration.
 
 ## Requirements
 
