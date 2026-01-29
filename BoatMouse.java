@@ -14,49 +14,32 @@ public class BoatMouse {
     public interface User32 extends StdCallLibrary {
         User32 INSTANCE = Native.load("user32", User32.class);
         int SPI_SETMOUSESPEED = 0x0071;
-        int SPI_GETMOUSESPEED = 0x0070;
+        int SPI_SETMOUSE = 0x0004;
 
-        boolean SystemParametersInfoW(
-                int uiAction,
-                int uiParam,
-                WinDef.UINTByReference pvParam,
-                 int fWinIni
-        );
-        boolean SystemParametersInfoW(
-                int uiAction,
-                int uiParam,
-                int pvParam,
-                 int fWinIni
-        );
+        boolean SystemParametersInfoW(int uiAction, int uiParam, int pvParam, int fWinIni);
+        boolean SystemParametersInfoW(int uiAction, int uiParam, int[] pvParam, int fWinIni);
     }
 
     private static void setMouseSpeed(int speed) {
-        User32.INSTANCE.SystemParametersInfoW(
-                User32.SPI_SETMOUSESPEED,
-                0,
-                 speed,
-                0x01 | 0x02 // SPIF_UPDATEINIFILE | SPIF_SENDCHANGE
-        );
+        User32.INSTANCE.SystemParametersInfoW(0x0071, 0, speed, 0x01 | 0x02);
     }
 
-    private static int getCurrentMouseSpeed() {
-        WinDef.UINTByReference ref = new WinDef.UINTByReference(new WinDef.UINT(10));
-        User32.INSTANCE.SystemParametersInfoW(User32.SPI_GETMOUSESPEED, 0, ref, 0);
-        return ref.getValue().intValue();
+    private static void setMouseAcceleration(boolean enabled) {
+        int[] params = enabled ? new int[]{6, 10, 1} : new int[]{0, 0, 0};
+        User32.INSTANCE.SystemParametersInfoW(0x0004, 0, params, 0x01 | 0x02);
     }
 
     /* ================= CONFIG ================= */
 
-    private static final File CONFIG =
-            new File(System.getProperty("user.home"), ".boatmouse.properties");
-
+    private static final File CONFIG = new File(System.getProperty("user.home"), ".boatmouse.properties");
     private static int slow = 3;
     private static int fast = 10;
     private static int startup = 10;
     private static boolean setOnStartup = false;
+    private static boolean accelerationEnabled = false; 
 
     private static void loadConfig() {
-         if (!CONFIG.exists()) return;
+        if (!CONFIG.exists()) return;
         try (FileInputStream in = new FileInputStream(CONFIG)) {
             Properties p = new Properties();
             p.load(in);
@@ -64,6 +47,7 @@ public class BoatMouse {
             fast = Integer.parseInt(p.getProperty("fast", "10"));
             startup = Integer.parseInt(p.getProperty("startup", "10"));
             setOnStartup = Boolean.parseBoolean(p.getProperty("startupEnabled", "false"));
+            accelerationEnabled = Boolean.parseBoolean(p.getProperty("acceleration", "false"));
         } catch (Exception ignored) {}
     }
 
@@ -74,89 +58,119 @@ public class BoatMouse {
             p.setProperty("fast", String.valueOf(fast));
             p.setProperty("startup", String.valueOf(startup));
             p.setProperty("startupEnabled", String.valueOf(setOnStartup));
+            p.setProperty("acceleration", String.valueOf(accelerationEnabled));
             p.store(out, "BoatMouse config");
         } catch (Exception ignored) {}
     }
 
-    /* ================= UI COLORS ================= */
+    /* ================= UI STYLES ================= */
 
     private static final Color BG = new Color(25, 25, 25);
-    private static final Color FG  = new Color(220, 220, 220);
+    private static final Color FG = new Color(220, 220, 220);
     private static final Color BTN = new Color(55, 55, 55);
+    private static final Color BTN_FOCUS = new Color(80, 80, 100);
     private static final Color BAR = new Color(18, 18, 18);
+
+    private static void makeFocusable(JButton b, Color normalBg) {
+        b.setFocusable(true);
+        b.addFocusListener(new FocusAdapter() {
+            public void focusGained(FocusEvent e) { b.setBackground(BTN_FOCUS); }
+            public void focusLost(FocusEvent e) { b.setBackground(normalBg); }
+        });
+    }
 
     private static JButton button(String text) {
         JButton b = new JButton(text);
-        b.setPreferredSize(new Dimension(260, 48));
+        b.setPreferredSize(new Dimension(260, 48)); 
+        b.setMaximumSize(new Dimension(260, 48));
         b.setBackground(BTN);
         b.setForeground(FG);
         b.setFont(b.getFont().deriveFont(Font.BOLD, 16f));
         b.setFocusPainted(false);
-        b.setAlignmentX(Component.CENTER_ALIGNMENT); // Центрирование
+        b.setBorderPainted(false);
+        b.setAlignmentX(Component.CENTER_ALIGNMENT);
+        makeFocusable(b, BTN);
         return b;
     }
 
     /* ================= SETTINGS ================= */
 
     private static void openSettings(JFrame parent) {
-        JDialog d =  new JDialog(parent, "Settings", true);
-        d.setSize(400, 300);
+        JDialog d = new JDialog(parent, "Settings", true);
+        d.setSize(380, 420);
         d.setResizable(false);
         d.setLocationRelativeTo(parent);
 
-        JPanel p = new JPanel(new GridLayout(5, 2, 10, 10));
+        JPanel p = new JPanel();
+        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
         p.setBackground(BG);
         p.setBorder(new EmptyBorder(20, 20, 20, 20));
 
-        JLabel l1 = new JLabel("Slow speed (1–20)");
-        JLabel l2 = new JLabel("Fast speed (1–20)");
-        JLabel l3 = new JLabel("Startup speed (1–20)");
+        // Создаем спиннеры
+        JSpinner sSlow = new JSpinner(new SpinnerNumberModel(slow, 1, 20, 1));
+        JSpinner sFast = new JSpinner(new SpinnerNumberModel(fast, 1, 20, 1));
+        JSpinner sStart = new JSpinner(new SpinnerNumberModel(startup, 1, 20, 1));
 
-        for (JLabel l : new JLabel[]{l1, l2, l3}) {
-            l.setForeground(FG);
+        addSettingRow(p, "Slow speed (1-20):", sSlow);
+        addSettingRow(p, "Fast speed (1-20):", sFast);
+        addSettingRow(p, "Startup speed (1-20):", sStart);
+
+        p.add(Box.createVerticalStrut(10));
+
+        JCheckBox cbStart = new JCheckBox("Set speed on startup", setOnStartup);
+        JCheckBox cbAccel = new JCheckBox("Enable Mouse Acceleration", accelerationEnabled);
+
+        for (JCheckBox cb : new JCheckBox[]{cbStart, cbAccel}) {
+            cb.setBackground(BG);
+            cb.setForeground(FG);
+            cb.setFocusPainted(false);
+            cb.setAlignmentX(Component.LEFT_ALIGNMENT);
+            p.add(cb);
+            p.add(Box.createVerticalStrut(10));
         }
 
-        JSpinner s1 = new JSpinner(new SpinnerNumberModel(slow, 1, 20, 1));
-        JSpinner s2 =  new JSpinner(new SpinnerNumberModel(fast, 1, 20, 1));
-        JSpinner s3 = new JSpinner(new SpinnerNumberModel(startup, 1, 20, 1));
-
-        JCheckBox cb = new JCheckBox("Set speed on startup", setOnStartup);
-        cb.setBackground(BG);
-        cb.setForeground(FG);
-
         JButton save = button("Save");
-
+        save.setAlignmentX(Component.LEFT_ALIGNMENT);
         save.addActionListener(e -> {
-            slow = (int) s1.getValue();
-            fast = (int) s2.getValue();
-            startup = (int) s3.getValue();
-            setOnStartup = cb.isSelected();
+            // Теперь данные реально считываются из UI
+            slow = (int) sSlow.getValue();
+            fast = (int) sFast.getValue();
+            startup = (int) sStart.getValue();
+            setOnStartup = cbStart.isSelected();
+            accelerationEnabled = cbAccel.isSelected();
+
+            setMouseAcceleration(accelerationEnabled);
             saveConfig();
-
-            // Обновляем текст на кнопках в главном окне
             updateMainButtons();
-
-             d.dispose();
+            d.dispose();
         });
 
-        p.add(l1); p.add(s1);
-        p.add(l2); p.add(s2);
-        p.add(l3); p.add(s3);
-        p.add(new JLabel()); p.add(cb);
-        p.add(new JLabel()); p.add(save);
+        p.add(Box.createVerticalGlue());
+        p.add(save);
 
-         d.setContentPane(p);
+        d.setContentPane(p);
         d.setVisible(true);
     }
 
-    // Новые глобальные переменные для доступа к кнопкам
-    private static JButton slowBtn;
-    private static JButton fastBtn;
+    private static void addSettingRow(JPanel parent, String text, JSpinner spinner) {
+        JPanel row = new JPanel(new BorderLayout());
+        row.setBackground(BG);
+        row.setMaximumSize(new Dimension(400, 35));
+        JLabel l = new JLabel(text);
+        l.setForeground(FG);
+        row.add(l, BorderLayout.WEST);
+        spinner.setPreferredSize(new Dimension(60, 25));
+        row.add(spinner, BorderLayout.EAST);
+        parent.add(row);
+        parent.add(Box.createVerticalStrut(10));
+    }
+
+    private static JButton slowBtn, fastBtn;
 
     private static void updateMainButtons() {
         SwingUtilities.invokeLater(() -> {
-            slowBtn.setText("🐢 Slow (" + slow + ")");
-            fastBtn.setText("🐇 Fast (" + fast + ")");
+            slowBtn.setText("Slow (" + slow + ")");
+            fastBtn.setText("Fast (" + fast + ")");
         });
     }
 
@@ -164,20 +178,20 @@ public class BoatMouse {
 
     public static void main(String[] args) {
         loadConfig();
-        if (setOnStartup)  setMouseSpeed(startup);
+        if (setOnStartup) setMouseSpeed(startup);
+        setMouseAcceleration(accelerationEnabled);
 
         SwingUtilities.invokeLater(() -> {
             JFrame f = new JFrame();
             f.setUndecorated(true);
-            f.setSize(350, 250);
+            f.setSize(350, 320); 
             f.setLocationRelativeTo(null);
             f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-            JPanel root = new JPanel();
+            JPanel root = new JPanel(new BorderLayout());
             root.setBackground(BG);
-            root.setLayout(new BorderLayout());
 
-            /* ---- Title Bar ---- */
+            // Title Bar
             JPanel bar = new JPanel(new BorderLayout());
             bar.setBackground(BAR);
             bar.setPreferredSize(new Dimension(0, 32));
@@ -185,14 +199,26 @@ public class BoatMouse {
             JLabel title = new JLabel("  BoatMouse");
             title.setForeground(FG);
 
-            JButton close = new JButton("✕");
-            close.setForeground(FG);
-            close.setBackground(BAR);
-            close.setFocusPainted(false);
-            close.addActionListener(e -> System.exit(0));
+            JPanel winBtns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+            winBtns.setBackground(BAR);
 
+            JButton min = new JButton("-");
+            JButton cls = new JButton("X");
+
+            for (JButton b : new JButton[]{min, cls}) {
+                b.setPreferredSize(new Dimension(45, 32));
+                b.setForeground(FG);
+                b.setBackground(BAR);
+                b.setBorderPainted(false);
+                b.setFocusPainted(false);
+                makeFocusable(b, BAR);
+            }
+
+            min.addActionListener(e -> f.setState(Frame.ICONIFIED));
+            cls.addActionListener(e -> System.exit(0));
+            winBtns.add(min); winBtns.add(cls);
             bar.add(title, BorderLayout.WEST);
-            bar.add(close, BorderLayout.EAST);
+            bar.add(winBtns, BorderLayout.EAST);
 
             MouseAdapter drag = new MouseAdapter() {
                 Point start;
@@ -205,31 +231,26 @@ public class BoatMouse {
             bar.addMouseListener(drag);
             bar.addMouseMotionListener(drag);
 
-            /* ---- Content ---- */
+            // Content
             JPanel c = new JPanel();
             c.setBackground(BG);
-            c.setLayout(new BoxLayout(c, BoxLayout.Y_AXIS)); // Используем BoxLayout для центрирования
-            c.setBorder(new EmptyBorder(20, 20, 20, 20));
+            c.setLayout(new BoxLayout(c, BoxLayout.Y_AXIS));
+            c.setBorder(new EmptyBorder(30, 20, 30, 20));
 
-            // Создаем кнопки как глобальные переменные
-            slowBtn = button("🐢 Slow (" + slow + ")");
-            fastBtn = button("🐇 Fast (" + fast + ")");
-            JButton settings = button("⚙ Settings");
+            slowBtn = button("Slow (" + slow + ")");
+            fastBtn = button("Fast (" + fast + ")");
+            JButton settings = button("Settings");
 
             slowBtn.addActionListener(e -> setMouseSpeed(slow));
             fastBtn.addActionListener(e -> setMouseSpeed(fast));
             settings.addActionListener(e -> openSettings(f));
 
-            // Добавляем компоненты с центрированием
-            c.add(slowBtn);
-            c.add(Box.createVerticalStrut(15));
-            c.add(fastBtn);
-            c.add(Box.createVerticalStrut(20));
+            c.add(slowBtn); c.add(Box.createVerticalStrut(15));
+            c.add(fastBtn); c.add(Box.createVerticalStrut(15));
             c.add(settings);
 
             root.add(bar, BorderLayout.NORTH);
             root.add(c, BorderLayout.CENTER);
-
             f.setContentPane(root);
             f.setVisible(true);
         });
