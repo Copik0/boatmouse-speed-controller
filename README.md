@@ -1,10 +1,14 @@
 # BoatMouse Speed Controller
 
 A simple Java tool to quickly change Windows mouse speed, designed for Minecraft speedrunners who use ninjabrain for measurements. (I hate Windows settings. I find it easier to create a folder and open everything in it.)
+Use it with Raw Accel and don't forget to turn off Acceleration.
+I created it using a AI, I have never written code for Java.
+
+Sensitivity Calculator - https://priffin.github.io/Pixel-Perfect-Tools/calc.html
 
 ## Features
 
-- 🐢 **Slow mode:** Switch to a precise low speed for accurate measurements
+- 🐢 **Slow mode:** Switch to a precise low speed for accurate measurements in boat
 - 🐇 **Fast mode:** Switch back to normal/high speed for standart if you use RawAccel
 - ⚙️ **Customizable speeds:** Set your own slow/fast/startup speeds
 - 🖤 **Dark theme:** Easy on the eyes
